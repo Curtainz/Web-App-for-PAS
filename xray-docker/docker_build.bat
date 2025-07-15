@@ -1,1 +1,1 @@
-docker build -t xray-app:latest .
+docker build -t xray-docker:latest .
