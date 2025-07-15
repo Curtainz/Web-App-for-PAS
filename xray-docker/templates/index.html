@@ -103,97 +103,32 @@
         <!-- 上传部分 -->
         <div class="upload-section">
             <h2>上传图像</h2>
-            <form id="upload-form">
-                <div class="file-input">
-                    <input type="file" id="image-upload" accept="image/*" required>
+            <form method="POST" action="/predict" enctype="multipart/form-data">
+                <div class="form-group">
+                    <label for="file-input">选择X光图像:</label>
+                    <input type="file" class="form-control" id="file-input" name="file" accept="image/*" required>
                 </div>
-                <button type="submit" class="submit-btn">分析图像</button>
+                <button type="submit" class="btn btn-primary">上传并分析</button>
             </form>
             <p class="error" id="error-message"></p>
         </div>
         
         <!-- 加载提示 -->
-        <div class="loading" id="loading">
-            <p>分析中，请稍候...</p>
+        <div id="loading" style="display:none" class="alert alert-info text-center mt-3">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-2">Please wait, analyzing image...</p>
         </div>
-        
+
         <!-- 结果显示区域 -->
-        <div class="result-section" id="result-section">
-            <h2>分析结果</h2>
-            <div id="result-text"></div>
-            <img id="result-image" class="result-image" alt="分析结果图像">
+        <div id="result-container" style="display:none" class="mt-4">
+            <h3 id="result-text"></h3>
+            <div class="text-center">
+                <img id="result-image" class="img-fluid" alt="分析结果">
+            </div>
         </div>
     </div>
-
-    <script>
-        // 当表单提交时处理上传和分析
-        document.getElementById('upload-form').addEventListener('submit', function(e) {
-            e.preventDefault(); // 阻止表单默认提交行为
-            
-            // 获取上传的文件
-            const fileInput = document.getElementById('image-upload');
-            const file = fileInput.files[0];
-            
-            // 检查是否选择了文件
-            if (!file) {
-                document.getElementById('error-message').textContent = '请选择一个图像文件';
-                return;
-            }
-            
-            // 隐藏之前的结果和错误，显示加载提示
-            document.getElementById('error-message').textContent = '';
-            document.getElementById('result-section').style.display = 'none';
-            document.getElementById('loading').style.display = 'block';
-            
-            // 准备发送文件
-            const formData = new FormData();
-            formData.append('file', file);
-            
-            // 发送请求到服务器
-            fetch('/predict', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => {
-                // 检查网络响应
-                if (!response.ok) {
-                    throw new Error('网络错误');
-                }
-                return response.json();
-            })
-            .then(data => {
-                // 隐藏加载提示
-                document.getElementById('loading').style.display = 'none';
-                
-                // 检查是否有错误
-                if (data.error) {
-                    document.getElementById('error-message').textContent = data.error;
-                    return;
-                }
-                
-                // 显示结果
-                const resultElement = document.getElementById('result-text');
-                if (data.result === 0) {
-                    // 正常结果
-                    resultElement.innerHTML = `<p>检测结果: <span class="normal">${data.result_text}</span></p>`;
-                } else {
-                    // 肺炎结果
-                    resultElement.innerHTML = `<p>检测结果: <span class="pneumonia">${data.result_text}</span></p>`;
-                }
-                
-                // 显示置信度
-                resultElement.innerHTML += `<p>置信度: ${(data.confidence * 100).toFixed(2)}%</p>`;
-                
-                // 显示结果图像
-                document.getElementById('result-image').src = `data:image/png;base64,${data.image}`;
-                document.getElementById('result-section').style.display = 'block';
-            })
-            .catch(error => {
-                // 处理错误
-                document.getElementById('loading').style.display = 'none';
-                document.getElementById('error-message').textContent = '错误: ' + error.message;
-            });
-        });
-    </script>
+    <script src="{{ url_for('static', filename='js/upload.js') }}"></script>
 </body>
 </html>
