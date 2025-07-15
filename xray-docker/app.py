@@ -1,0 +1,115 @@
+import os
+import tensorflow as tf
+import numpy as np
+from flask import Flask, request, jsonify, render_template
+from werkzeug.utils import secure_filename
+from PIL import Image
+import io
+import base64
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+
+app = Flask(__name__)
+app.config['UPLOAD_FOLDER'] = '/uploads'  # 修改为容器内挂载点
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+
+# 更新模型路径以匹配挂载点
+MODEL_PATH = "/models/F_M1_90"
+
+# 兼容Keras 3的模型加载方式
+try:
+    # 首先尝试直接加载模型
+    model = tf.keras.models.load_model(MODEL_PATH)
+except ValueError as e:
+    # 如果失败，尝试使用TFSMLayer加载
+    print(f"标准加载失败，尝试使用TFSMLayer: {e}")
+    try:
+        model = tf.keras.layers.TFSMLayer(MODEL_PATH, call_endpoint='serving_default')
+    except Exception as e2:
+        # 如果仍然失败，尝试指定特定版本的TF兼容性
+        print(f"TFSMLayer加载失败: {e2}")
+        # 通过设置环境变量降级TF行为
+        os.environ['TF_KERAS'] = '1'
+        model = tf.keras.models.load_model(MODEL_PATH, compile=False)
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/predict', methods=['POST'])
+def predict():
+    if 'file' not in request.files:
+        return jsonify({'error': '请求中没有文件部分'}), 400
+    
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': '未选择文件'}), 400
+    
+    filename = secure_filename(file.filename)
+    file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    file.save(file_path)
+    
+    try:
+        test_orig = Image.open(file_path).convert("L")
+        test = test_orig.resize((1100, 1100), Image.LANCZOS)
+        test_tensor = tf.reshape(tf.constant(test, dtype=tf.float32), (1, 1100, 1100, 1))
+        
+        # 根据模型类型进行预测
+        if isinstance(model, tf.keras.layers.TFSMLayer):
+            # TFSMLayer模型调用方式不同
+            prediction = model(test_tensor)
+            # 获取输出张量(可能需要根据实际模型调整)
+            if isinstance(prediction, dict):
+                prediction_values = next(iter(prediction.values())).numpy()
+            else:
+                prediction_values = prediction.numpy()
+        else:
+            # 常规模型
+            prediction_values = model.predict(test_tensor)
+        
+        result = np.argmax(prediction_values)
+        
+        plt.figure(figsize=(12, 6))
+        
+        plt.subplot(1, 2, 1)
+        plt.imshow(test_orig, cmap='gray')
+        plt.title("原图像")
+        
+        plt.subplot(1, 2, 2)
+        plt.imshow(tf.reshape(test_tensor, (1100, 1100)), cmap='gray')
+        plt.title("模型输入图像")
+        
+        if result == 0:
+            result_text = "参考结果：正常"
+        else:
+            result_text = "参考结果：肺炎"
+            
+        plt.suptitle(result_text)
+        plt.tight_layout()
+        
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png')
+        buf.seek(0)
+        img_str = base64.b64encode(buf.read()).decode('utf-8')
+        plt.close()
+        
+        return jsonify({
+            'result': int(result),
+            'result_text': result_text,
+            'confidence': float(prediction_values[0][result]) if prediction_values.ndim > 1 else float(prediction_values[result]),
+            'prediction_values': prediction_values.tolist(),
+            'image': img_str
+        })
+    
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        return jsonify({
+            'error': str(e),
+            'details': error_details
+        }), 500
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000, debug=False)
