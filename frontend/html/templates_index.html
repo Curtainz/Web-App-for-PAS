@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>X光片肺炎检测系统</title>
+    <style>
+        /* 基本样式设置 */
+        body {
+            font-family: 'Microsoft Yahei', Arial, sans-serif; /* 使用微软雅黑字体 */
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+            color: #333;
+        }
+        /* 主容器样式 */
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        /* 标题样式 */
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        /* 上传区域样式 */
+        .upload-section {
+            background-color: #f9f9f9;
+            padding: 20px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        /* 表单样式 */
+        #upload-form {
+            display: flex;
+            flex-direction: column;
+        }
+        /* 文件输入框样式 */
+        .file-input {
+            margin-bottom: 15px;
+        }
+        /* 提交按钮样式 */
+        .submit-btn {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s;
+        }
+        /* 提交按钮悬停效果 */
+        .submit-btn:hover {
+            background-color: #2980b9;
+        }
+        /* 结果区域样式 */
+        .result-section {
+            display: none; /* 初始隐藏 */
+            margin-top: 30px;
+        }
+        /* 结果图像样式 */
+        .result-image {
+            max-width: 100%;
+            height: auto;
+            margin-top: 20px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        /* 加载提示样式 */
+        .loading {
+            text-align: center;
+            display: none; /* 初始隐藏 */
+            margin: 20px 0;
+        }
+        /* 正常结果文本样式 */
+        .normal {
+            color: #27ae60;
+            font-weight: bold;
+        }
+        /* 肺炎结果文本样式 */
+        .pneumonia {
+            color: #e74c3c;
+            font-weight: bold;
+        }
+        /* 错误信息样式 */
+        .error {
+            color: #e74c3c;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>X光片肺炎检测系统</h1>
+        
+        <!-- 上传部分 -->
+        <div class="upload-section">
+            <h2>上传图像</h2>
+            <form id="upload-form">
+                <div class="file-input">
+                    <input type="file" id="image-upload" accept="image/*" required>
+                </div>
+                <button type="submit" class="submit-btn">分析图像</button>
+            </form>
+            <p class="error" id="error-message"></p>
+        </div>
+        
+        <!-- 加载提示 -->
+        <div class="loading" id="loading">
+            <p>分析中，请稍候...</p>
+        </div>
+        
+        <!-- 结果显示区域 -->
+        <div class="result-section" id="result-section">
+            <h2>分析结果</h2>
+            <div id="result-text"></div>
+            <img id="result-image" class="result-image" alt="分析结果图像">
+        </div>
+    </div>
+
+    <script>
+        // 当表单提交时处理上传和分析
+        document.getElementById('upload-form').addEventListener('submit', function(e) {
+            e.preventDefault(); // 阻止表单默认提交行为
+            
+            // 获取上传的文件
+            const fileInput = document.getElementById('image-upload');
+            const file = fileInput.files[0];
+            
+            // 检查是否选择了文件
+            if (!file) {
+                document.getElementById('error-message').textContent = '请选择一个图像文件';
+                return;
+            }
+            
+            // 隐藏之前的结果和错误，显示加载提示
+            document.getElementById('error-message').textContent = '';
+            document.getElementById('result-section').style.display = 'none';
+            document.getElementById('loading').style.display = 'block';
+            
+            // 准备发送文件
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            // 发送请求到服务器
+            fetch('/predict', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => {
+                // 检查网络响应
+                if (!response.ok) {
+                    throw new Error('网络错误');
+                }
+                return response.json();
+            })
+            .then(data => {
+                // 隐藏加载提示
+                document.getElementById('loading').style.display = 'none';
+                
+                // 检查是否有错误
+                if (data.error) {
+                    document.getElementById('error-message').textContent = data.error;
+                    return;
+                }
+                
+                // 显示结果
+                const resultElement = document.getElementById('result-text');
+                if (data.result === 0) {
+                    // 正常结果
+                    resultElement.innerHTML = `<p>检测结果: <span class="normal">${data.result_text}</span></p>`;
+                } else {
+                    // 肺炎结果
+                    resultElement.innerHTML = `<p>检测结果: <span class="pneumonia">${data.result_text}</span></p>`;
+                }
+                
+                // 显示置信度
+                resultElement.innerHTML += `<p>置信度: ${(data.confidence * 100).toFixed(2)}%</p>`;
+                
+                // 显示结果图像
+                document.getElementById('result-image').src = `data:image/png;base64,${data.image}`;
+                document.getElementById('result-section').style.display = 'block';
+            })
+            .catch(error => {
+                // 处理错误
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('error-message').textContent = '错误: ' + error.message;
+            });
+        });
+    </script>
+</body>
+</html>
