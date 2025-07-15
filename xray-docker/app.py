@@ -10,6 +10,7 @@ import io
 import base64
 import matplotlib
 matplotlib.use('Agg')
+matplotlib.rcParams['font.family'] = ['DejaVu Sans', 'sans-serif']
 import matplotlib.pyplot as plt
 
 app = Flask(__name__)
@@ -48,12 +49,16 @@ def index():
 @app.route('/predict', methods=['POST'])
 def predict():
     app.logger.info("收到预测请求")
+    app.logger.info(f"请求表单: {request.form}")
+    app.logger.info(f"请求文件: {request.files}")
     
     if 'file' not in request.files:
         app.logger.error("请求中没有文件部分")
         return jsonify({'error': '请求中没有文件部分'}), 400
     
     file = request.files['file']
+    app.logger.info(f"文件名: {file.filename}")
+
     if file.filename == '':
         app.logger.error("未选择文件")
         return jsonify({'error': '未选择文件'}), 400
@@ -80,26 +85,26 @@ def predict():
             
             result = np.argmax(prediction_values)
             
-            plt.figure(figsize=(12, 6))
-            
+            # 使用英文标题避免中文字体问题
+            plt.figure(figsize=(10, 5))
             plt.subplot(1, 2, 1)
             plt.imshow(test_orig, cmap='gray')
-            plt.title("原图像")
-            
+            plt.title("Original Image")
+
             plt.subplot(1, 2, 2)
             plt.imshow(tf.reshape(test_tensor, (1100, 1100)), cmap='gray')
-            plt.title("模型输入图像")
-            
+            plt.title("Processed Image")
+
             if result == 0:
-                result_text = "参考结果：正常"
+                result_text = "Result: Normal"
             else:
-                result_text = "参考结果：肺炎"
-                
+                result_text = "Result: Pneumonia"
+    
             plt.suptitle(result_text)
             plt.tight_layout()
-            
+
             buf = io.BytesIO()
-            plt.savefig(buf, format='png')
+            plt.savefig(buf, format='png', dpi=100)  # 降低分辨率
             buf.seek(0)
             img_str = base64.b64encode(buf.read()).decode('utf-8')
             plt.close()
