@@ -1,3 +1,5 @@
+import traceback
+import logging
 import os
 import tensorflow as tf
 import numpy as np
@@ -11,8 +13,13 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 app = Flask(__name__)
+app.logger.setLevel(logging.INFO)
+handler = logging.StreamHandler()
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+handler.setFormatter(formatter)
+app.logger.addHandler(handler)
 app.config['UPLOAD_FOLDER'] = '/uploads'  # 修改为容器内挂载点
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024 # 限制上传文件大小为16MB
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 # 更新模型路径以匹配挂载点
@@ -40,74 +47,85 @@ def index():
 
 @app.route('/predict', methods=['POST'])
 def predict():
+    app.logger.info("收到预测请求")
+    
     if 'file' not in request.files:
+        app.logger.error("请求中没有文件部分")
         return jsonify({'error': '请求中没有文件部分'}), 400
     
     file = request.files['file']
     if file.filename == '':
+        app.logger.error("未选择文件")
         return jsonify({'error': '未选择文件'}), 400
     
-    filename = secure_filename(file.filename)
-    file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-    file.save(file_path)
-    
     try:
-        test_orig = Image.open(file_path).convert("L")
-        test = test_orig.resize((1100, 1100), Image.LANCZOS)
-        test_tensor = tf.reshape(tf.constant(test, dtype=tf.float32), (1, 1100, 1100, 1))
+        filename = secure_filename(file.filename)
         
-        # 根据模型类型进行预测
-        if isinstance(model, tf.keras.layers.TFSMLayer):
-            # TFSMLayer模型调用方式不同
-            prediction = model(test_tensor)
-            # 获取输出张量(可能需要根据实际模型调整)
-            if isinstance(prediction, dict):
-                prediction_values = next(iter(prediction.values())).numpy()
-            else:
-                prediction_values = prediction.numpy()
-        else:
-            # 常规模型
-            prediction_values = model.predict(test_tensor)
+        # 确保上传目录存在
+        os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
         
-        result = np.argmax(prediction_values)
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        app.logger.info(f"尝试保存文件到: {file_path}")
         
-        plt.figure(figsize=(12, 6))
+        # 保存文件
+        file.save(file_path)
+        app.logger.info(f"文件成功保存到: {file_path}")
         
-        plt.subplot(1, 2, 1)
-        plt.imshow(test_orig, cmap='gray')
-        plt.title("原图像")
-        
-        plt.subplot(1, 2, 2)
-        plt.imshow(tf.reshape(test_tensor, (1100, 1100)), cmap='gray')
-        plt.title("模型输入图像")
-        
-        if result == 0:
-            result_text = "参考结果：正常"
-        else:
-            result_text = "参考结果：肺炎"
+        try:
+            test_orig = Image.open(file_path).convert("L")
+            test = test_orig.resize((1100, 1100), Image.LANCZOS)
+            test_tensor = tf.reshape(tf.constant(test, dtype=tf.float32), (1, 1100, 1100, 1))
             
-        plt.suptitle(result_text)
-        plt.tight_layout()
-        
-        buf = io.BytesIO()
-        plt.savefig(buf, format='png')
-        buf.seek(0)
-        img_str = base64.b64encode(buf.read()).decode('utf-8')
-        plt.close()
-        
-        return jsonify({
-            'result': int(result),
-            'result_text': result_text,
-            'confidence': float(prediction_values[0][result]) if prediction_values.ndim > 1 else float(prediction_values[result]),
-            'prediction_values': prediction_values.tolist(),
-            'image': img_str
-        })
-    
+            prediction_values = model.predict(test_tensor)
+            
+            result = np.argmax(prediction_values)
+            
+            plt.figure(figsize=(12, 6))
+            
+            plt.subplot(1, 2, 1)
+            plt.imshow(test_orig, cmap='gray')
+            plt.title("原图像")
+            
+            plt.subplot(1, 2, 2)
+            plt.imshow(tf.reshape(test_tensor, (1100, 1100)), cmap='gray')
+            plt.title("模型输入图像")
+            
+            if result == 0:
+                result_text = "参考结果：正常"
+            else:
+                result_text = "参考结果：肺炎"
+                
+            plt.suptitle(result_text)
+            plt.tight_layout()
+            
+            buf = io.BytesIO()
+            plt.savefig(buf, format='png')
+            buf.seek(0)
+            img_str = base64.b64encode(buf.read()).decode('utf-8')
+            plt.close()
+            
+            return jsonify({
+                'result': int(result),
+                'result_text': result_text,
+                'confidence': float(prediction_values[0][result]),
+                'prediction_values': prediction_values.tolist(),
+                'image': img_str
+            })
+        except Exception as e:
+            app.logger.error(f"图像处理过程中出错: {str(e)}")
+            import traceback
+            error_details = traceback.format_exc()
+            return jsonify({
+                'error': f"图像处理错误: {str(e)}",
+                'details': error_details
+            }), 500
+            
     except Exception as e:
+        app.logger.error(f"上传处理过程中出错: {str(e)}")
         import traceback
         error_details = traceback.format_exc()
         return jsonify({
-            'error': str(e),
+            'error': f"文件上传错误: {str(e)}",
             'details': error_details
         }), 500
 
