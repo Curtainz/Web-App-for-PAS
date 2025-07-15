@@ -16,6 +16,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app.py .
 COPY templates templates/
+COPY static static/
 
 # 创建必要的目录
 RUN mkdir -p /uploads /models
@@ -26,4 +27,4 @@ RUN sed -i 's|UPLOAD_FOLDER = .*|UPLOAD_FOLDER = "/uploads"|g' app.py && \
 
 EXPOSE 5000
 
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "app:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--timeout", "120", "--workers", "1", "app:app"]
