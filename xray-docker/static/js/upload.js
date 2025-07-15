@@ -1,4 +1,3 @@
-// 创建static目录和js子目录，添加以下内容
 document.addEventListener('DOMContentLoaded', function() {
     const form = document.querySelector('form');
     
