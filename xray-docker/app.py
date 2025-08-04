@@ -221,13 +221,16 @@ def predict(model: tf.keras.Model, image_path: str, class_names: Optional[List[s
         print(f"预测错误: {str(e)}", file=sys.stderr)
         return None
 
-# 在应用启动时加载模型
-@app.before_first_request
-def load_model_on_startup():
-    global global_model
+# 在应用启动时尝试加载模型
+print("尝试加载模型...")
+try:
     global_model = load_model(MODEL_PATH)
     if global_model is None:
         print("警告：模型加载失败！应用将无法进行预测。", file=sys.stderr)
+    else:
+        print("模型加载成功！")
+except Exception as e:
+    print(f"模型加载出错: {str(e)}", file=sys.stderr)
 
 # 主页路由
 @app.route('/')
