@@ -1,30 +1,24 @@
-FROM python:3.9-slim
+FROM python:3.10-slim
 
 WORKDIR /app
 
+# 安装系统依赖
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libgl1-mesa-glx \
-    libglib2.0-0 \
-    && apt-get clean \
+    gcc \
+    libc6-dev \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
+# 复制应用文件
+COPY . .
 
-# 安装特定版本的TensorFlow (2.x版本，与SavedModel格式兼容)
-RUN pip install --no-cache-dir tensorflow==2.12.0
+# 安装Python依赖
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY app.py .
-COPY templates templates/
-COPY static static/
+# 创建上传目录
+RUN mkdir -p uploads
 
-# 创建必要的目录
-RUN mkdir -p /uploads /models
-
-# 修改app.py中的路径
-RUN sed -i 's|UPLOAD_FOLDER = .*|UPLOAD_FOLDER = "/uploads"|g' app.py && \
-    sed -i 's|MODEL_PATH = .*|MODEL_PATH = "/models/F_M1_90"|g' app.py
-
+# 暴露端口
 EXPOSE 5000
 
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--timeout", "120", "--workers", "1", "app:app"]
+# 运行应用
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "app:app"]
